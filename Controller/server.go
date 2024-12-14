@@ -49,6 +49,26 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(product)
 }
 
+// Update Product
+func UpdateProduct(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	for index, item := range products {
+		if item.ProductId == params["id"] {
+			products = append(products[:index], products[index+1:]...)
+			var product model.Product
+
+			err := json.NewDecoder(r.Body).Decode(&product)
+			if err != nil {
+				panic(err)
+			}
+			products = append(products, product)
+			json.NewEncoder(w).Encode(product)
+			return
+		}
+	}
+	json.NewEncoder(w).Encode(model.Product{})
+}
+
 // Delete Product
 func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	parameter := mux.Vars(r)
@@ -73,6 +93,7 @@ func StartServer() {
 	r.HandleFunc("/all", GetAllProducts)
 	r.HandleFunc("/create", CreateProduct).Methods("POST")
 	r.HandleFunc("/{id}", GetProductById)
+	r.HandleFunc("/update/{id}", UpdateProduct).Methods("PUT")
 	r.HandleFunc("/delete/{id}", DeleteProduct).Methods("DELETE")
 	// r.HandleFunc("/create", CreateProduct).Methods("POST")
 
