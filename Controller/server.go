@@ -1,15 +1,23 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
-	model "github.com/Likhil45/E-Commerce/Model"
+	"net/http"
+	"time"
+
+	"github.com/Likhil45/E-Commerce/database"
+	model "github.com/Likhil45/E-Commerce/model"
+	"github.com/Likhil45/E-Commerce/responses"
 	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var products []model.Product
+var productCollection *mongo.Collection = database.FetchProducts(database.DB, "products")
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Welcome to the Home Page")
@@ -20,8 +28,37 @@ func TestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Get All
-func GetAllProducts(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(products)
+func GetAllProducts(rw http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var products []model.Product
+	defer cancel()
+
+	//Error Handling
+	results, err := productCollection.Find(ctx, bson.M{})
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		response := responses.ProductResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"data": err.Error()}}
+		json.NewEncoder(rw).Encode(response)
+		return
+	}
+	//reading from the db in an optimal way
+	defer results.Close(ctx)
+	for results.Next(ctx) {
+		var singleProduct model.Product
+		if err = results.Decode(&singleProduct); err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			response := responses.ProductResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"data": err.Error()}}
+			json.NewEncoder(rw).Encode(response)
+		}
+
+		products = append(products, singleProduct)
+
+	}
+	rw.WriteHeader(http.StatusOK)
+	response := responses.ProductResponse{Status: http.StatusOK, Message: "success", Data: map[string]interface{}{"data": products}}
+	json.NewEncoder(rw).Encode(response)
+	// prod := database.FetchProducts(productCollection,"products")
+	// json.NewEncoder(w).Encode(&productCollection)
 }
 
 // GetById
@@ -90,7 +127,7 @@ func StartServer() {
 	//Define Routes
 	r.HandleFunc("/", HomeHandler).Methods("GET")
 	r.HandleFunc("/test", TestHandler)
-	r.HandleFunc("/all", GetAllProducts)
+	r.HandleFunc("/all", GetAllProducts).Methods("GET")
 	r.HandleFunc("/create", CreateProduct).Methods("POST")
 	r.HandleFunc("/{id}", GetProductById)
 	r.HandleFunc("/update/{id}", UpdateProduct).Methods("PUT")
