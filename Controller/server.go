@@ -13,6 +13,7 @@ import (
 	"github.com/Likhil45/E-Commerce/responses"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -62,16 +63,29 @@ func GetAllProducts(rw http.ResponseWriter, r *http.Request) {
 }
 
 // GetById
-func GetProductById(w http.ResponseWriter, r *http.Request) {
+func GetProductById(rw http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var product model.Product
+	defer cancel()
+	objId, _ := primitive.ObjectIDFromHex(params["id"])
 
-	for _, item := range products {
-		if item.ProductId == params["id"] {
-			json.NewEncoder(w).Encode(item)
-			return
-		}
+	err := productCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&product)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		response := responses.ProductResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"data": err.Error()}}
+		json.NewEncoder(rw).Encode(response)
 	}
-	json.NewEncoder(w).Encode(&model.Product{})
+	rw.WriteHeader(http.StatusOK)
+	response := responses.ProductResponse{Status: http.StatusOK, Message: "success", Data: map[string]interface{}{"data": product}}
+	json.NewEncoder(rw).Encode(response)
+	// for _, item := range products {
+	// 	if item.ProductId == params["id"] {
+	// 		json.NewEncoder(w).Encode(item)
+	// 		return
+	// 	}
+	// }
+	// json.NewEncoder(w).Encode(&model.Product{})
 }
 
 // Create Product
@@ -121,8 +135,8 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 func StartServer() {
 	r := mux.NewRouter()
 
-	products = append(products, model.Product{ProductId: "1", ProductName: "Chair", ProductColor: "Brown", ProductCost: 50})
-	products = append(products, model.Product{ProductId: "2", ProductName: "Sofa", ProductColor: "Grey", ProductCost: 100})
+	// products = append(products, model.Product{ProductId: "1", ProductName: "Chair", ProductColor: "Brown", ProductCost: 50})
+	// products = append(products, model.Product{ProductId: "2", ProductName: "Sofa", ProductColor: "Grey", ProductCost: 100})
 
 	//Define Routes
 	r.HandleFunc("/", HomeHandler).Methods("GET")
