@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/go-playground/validator/v10"
+
 	"net/http"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 )
 
 var products []model.Product
-var productCollection *mongo.Collection = database.FetchProducts(database.DB, "products")
+var productCollection *mongo.Collection = database.Fetch(database.DB, "products")
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Welcome to the Home Page")
@@ -58,8 +60,6 @@ func GetAllProducts(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	response := responses.ProductResponse{Status: http.StatusOK, Message: "success", Data: map[string]interface{}{"data": products}}
 	json.NewEncoder(rw).Encode(response)
-	// prod := database.FetchProducts(productCollection,"products")
-	// json.NewEncoder(w).Encode(&productCollection)
 }
 
 // GetById
@@ -79,32 +79,54 @@ func GetProductById(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	response := responses.ProductResponse{Status: http.StatusOK, Message: "success", Data: map[string]interface{}{"data": product}}
 	json.NewEncoder(rw).Encode(response)
-	// for _, item := range products {
-	// 	if item.ProductId == params["id"] {
-	// 		json.NewEncoder(w).Encode(item)
-	// 		return
-	// 	}
-	// }
-	// json.NewEncoder(w).Encode(&model.Product{})
 }
 
 // Create Product
-func CreateProduct(w http.ResponseWriter, r *http.Request) {
+func CreateProduct(rw http.ResponseWriter, r *http.Request) {
 	var product model.Product
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var validate = validator.New()
+	defer cancel()
+
 	err := json.NewDecoder(r.Body).Decode(&product)
 	if err != nil {
 		fmt.Println("Wrong data sent")
 		panic(err)
 	}
-	products = append(products, product)
-	json.NewEncoder(w).Encode(product)
+	if validationErr := validate.Struct(&product); validationErr != nil {
+		rw.WriteHeader(http.StatusBadRequest)
+		response := responses.ProductResponse{Status: http.StatusBadRequest, Message: "error", Data: map[string]interface{}{"data": validationErr.Error()}}
+		json.NewEncoder(rw).Encode(response)
+		return
+	}
+
+	newproduct := model.Product{
+		ProductId:    primitive.NewObjectID(),
+		ProductName:  product.ProductName,
+		ProductCost:  product.ProductCost,
+		ProductColor: product.ProductColor,
+	}
+	result, err := productCollection.InsertOne(ctx, newproduct)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		response := responses.ProductResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"data": err.Error()}}
+		json.NewEncoder(rw).Encode(response)
+		return
+	}
+
+	rw.WriteHeader(http.StatusCreated)
+	response := responses.ProductResponse{Status: http.StatusCreated, Message: "success", Data: map[string]interface{}{"data": result}}
+	json.NewEncoder(rw).Encode(response)
+
 }
 
 // Update Product
 func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
+	prodId := params["id"]
+	ObjId, _ := primitive.ObjectIDFromHex(prodId)
 	for index, item := range products {
-		if item.ProductId == params["id"] {
+		if item.ProductId == ObjId {
 			products = append(products[:index], products[index+1:]...)
 			var product model.Product
 
@@ -123,31 +145,13 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
 // Delete Product
 func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	parameter := mux.Vars(r)
+	prodId := parameter["id"]
+	ObjId, _ := primitive.ObjectIDFromHex(prodId)
 	for index, item := range products {
-		if item.ProductId == parameter["id"] {
+		if item.ProductId == ObjId {
 			products = append(products[:index], products[index+1:]...)
 			break
 		}
 	}
 	json.NewEncoder(w).Encode(products)
-}
-
-func StartServer() {
-	r := mux.NewRouter()
-
-	// products = append(products, model.Product{ProductId: "1", ProductName: "Chair", ProductColor: "Brown", ProductCost: 50})
-	// products = append(products, model.Product{ProductId: "2", ProductName: "Sofa", ProductColor: "Grey", ProductCost: 100})
-
-	//Define Routes
-	r.HandleFunc("/", HomeHandler).Methods("GET")
-	r.HandleFunc("/test", TestHandler)
-	r.HandleFunc("/all", GetAllProducts).Methods("GET")
-	r.HandleFunc("/create", CreateProduct).Methods("POST")
-	r.HandleFunc("/{id}", GetProductById)
-	r.HandleFunc("/update/{id}", UpdateProduct).Methods("PUT")
-	r.HandleFunc("/delete/{id}", DeleteProduct).Methods("DELETE")
-	// r.HandleFunc("/create", CreateProduct).Methods("POST")
-
-	http.ListenAndServe(":8080", r)
-
 }
