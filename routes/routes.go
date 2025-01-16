@@ -23,7 +23,7 @@ func StartServer() {
 
 	//Users
 	r.HandleFunc("/user/all", controller.GetAllUser).Methods("GET")
-	r.HandleFunc("/user/create", controller.CreateUser).Methods("GET")
+	r.HandleFunc("/user/create", controller.CreateUser).Methods("POST")
 
 	http.ListenAndServe(":8080", r)
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Likhil45/E-Commerce/model"
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/mux"
 
 	"github.com/Likhil45/E-Commerce/database"
 	"github.com/Likhil45/E-Commerce/responses"
@@ -85,4 +86,23 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	response := responses.ProductResponse{Status: http.StatusCreated, Message: "Succefully Added", Data: map[string]interface{}{"Added": result}}
 	json.NewEncoder(w).Encode(response)
 
+}
+
+// Get user by id
+func GetUserById(rw http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var user model.User
+	defer cancel()
+	objId, _ := primitive.ObjectIDFromHex(params["id"])
+
+	err := userCollection.FindOne(ctx, bson.M{"_id": objId}).Decode(&user)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		response := responses.ProductResponse{Status: http.StatusInternalServerError, Message: "error", Data: map[string]interface{}{"data": err.Error()}}
+		json.NewEncoder(rw).Encode(response)
+	}
+	rw.WriteHeader(http.StatusOK)
+	response := responses.ProductResponse{Status: http.StatusOK, Message: "success", Data: map[string]interface{}{"data": user}}
+	json.NewEncoder(rw).Encode(response)
 }
